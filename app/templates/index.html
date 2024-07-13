@@ -1,6 +1,16 @@
-<!DOCTYPE html>
-<html>
-  <head>
+
+{% extends "base.html" %}
+
+{% block header %}
+  <h1>{% block title %}{% endblock %}</h1>
+{% endblock %}
+
+{% block content %}
+  <h1>Welcome to the Booking System</h1>
+  <p>Please <a href="/login">log in</a> to access the dashboard.</p>
+{% endblock %}
+
+<!-- 
     <title>Database Management</title>
   </head>
   <body>
@@ -19,3 +29,4 @@
     </ul>
   </body>
 </html>
+-->
