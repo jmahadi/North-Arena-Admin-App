@@ -1,0 +1,34 @@
+
+
+
+@router.post("/add_column", response_class=HTMLResponse)
+async def add_column(request: Request, table_name: str = Form(...), column_name: str = Form(...), column_type: str = Form(...), db: AsyncSession = Depends(get_db)):
+    await db.execute(text(f'ALTER TABLE public.{table_name} ADD COLUMN {column_name} {column_type}'))
+    await db.commit()
+    return "Column added"
+
+@router.get("/add_column", response_class=HTMLResponse)
+async def add_column_get(request: Request):
+    return templates.TemplateResponse("add_column.html", {"request": request})
+
+@router.post("/drop_column", response_class=HTMLResponse)
+async def drop_column(request: Request, table_name: str = Form(...), column_name: str = Form(...), db: AsyncSession = Depends(get_db)):
+    await db.execute(text(f'ALTER TABLE public.{table_name} DROP COLUMN {column_name}'))
+    await db.commit()
+    return f'Column {column_name} dropped from table {table_name}'
+
+@router.get("/drop_column", response_class=HTMLResponse)
+async def drop_column_get(request: Request):
+    return templates.TemplateResponse("drop_column.html", {"request": request})
+
+@router.post("/insert_user", response_class=HTMLResponse)
+async def insert_user(request: Request, username: str = Form(...), email: str = Form(...), password: str = Form(...), db: AsyncSession = Depends(get_db)):
+    user = User(username=username, email=email)
+    user.set_password(password)
+    db.add(user)
+    await db.commit()
+    return RedirectResponse(url="/login", status_code=303)
+
+@router.get("/insert_user", response_class=HTMLResponse)
+async def insert_user_get(request: Request):
+    return templates.TemplateResponse("insert_user.html", {"request": request})
