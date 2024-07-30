@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+    body {
+        background-color: #1e1e1e;
+        color: #e0e0e0;
+    }
+    .container {
+        background-color: #2a2a2a;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    .form-control, .form-select {
+        background-color: #3a3a3a;
+        border: none;
+        color: #ffffff;
+    }
+    .btn-primary {
+        background-color: #4CAF50;
+        border: none;
+    }
+    .btn-primary:hover {
+        background-color: #45a049;
+    }
+    .table {
+        color: #e0e0e0;
+    }
+    .table-dark {
+        background-color: #2a2a2a;
+    }
+    .error-message {
+        color: #ff6b6b;
+        margin-top: 5px;
+    }
+    .table-responsive {
+        overflow-x: auto;
+    }
+    @media (max-width: 768px) {
+        .col-md-6 {
+            margin-bottom: 30px;
+        }
+    }
+    .hidden {
+        display: none;
+    }
+    .booking-select {
+        margin-bottom: 20px;
+    }
+    .transaction-form {
+        margin-bottom: 30px;
+    }
+    .slot-cell {
+        white-space: nowrap;  
+    }
+
+
+    .btn-custom {
+        padding: 6px 12px;
+        font-size: 14px;
+    }
+    #update-transaction-form .btn-custom {
+        width: auto;
+        margin-top: 10px;
+    }
+    .date-range-row {
+        display: flex;
+        align-items: flex-end;
+        margin-bottom: 20px;
+    }
+    .date-range-row .form-group {
+        margin-right: 10px;
+        flex-grow: 1;
+        margin-bottom: 0;
+    }
+    .date-range-row .btn-custom {
+        height: 38px;
+        padding: 6px 12px;
+        font-size: 14px;
+        white-space: nowrap;
+    }
+</style>
+
+
+
+
+<div class="container mt-5">
+    <h1>Update Transactions</h1>
+    <a href="/transactions" class="btn btn-secondary mb-3">Back to Transactions</a>
+
+    <form id="update-transaction-form">
+        <input type="hidden" id="transaction-id" name="transaction_id">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label for="transaction-date">Select Date:</label>
+                <input type="date" id="transaction-date" name="transaction_date" class="form-control" required>
+            </div>
+            <div class="col-md-6">
+                <label for="booking-id">Select Booking:</label>
+                <select id="booking-id" name="booking_id" class="form-control" required>
+                    <option value="">Select a booking</option>
+                </select>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label for="transaction-type">Transaction Type:</label>
+                <select id="transaction-type" name="transaction_type" class="form-control" required>
+                    <option value="">Select a transaction type</option>
+                    <option value="Booking Payment">Booking Payment</option>
+                    <option value="Slot Payment">Slot Payment</option>
+                    <option value="Discount">Discount</option>
+                    <option value="Other Adjustment">Other Adjustment</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label for="payment-method">Payment Method:</label>
+                <select id="payment-method" name="payment_method" class="form-control" required>
+                    <option value="">Select a payment method</option>
+                    <option value="Cash">Cash</option>
+                    <option value="bKash">bKash</option>
+                    <option value="Nagad">Nagad</option>
+                    <option value="Card">Card</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                </select>
+            </div>
+        </div>
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label for="amount">Amount:</label>
+                <input type="number" id="amount" name="amount" class="form-control" step="0.01" required>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-12">
+                <button type="submit" class="btn btn-primary btn-custom">Update Transaction</button>
+            </div>
+        </div>
+    </form>
+
+    <div id="update-transaction-error" class="alert alert-danger mt-3" style="display: none;"></div>
+
+    <h2 class="mt-4">Transaction Details</h2>
+    <div class="date-range-row">
+        <div class="form-group">
+            <label for="start-date">Start Date:</label>
+            <input type="date" id="start-date" class="form-control">
+        </div>
+        <div class="form-group">
+            <label for="end-date">End Date:</label>
+            <input type="date" id="end-date" class="form-control">
+        </div>
+        <button id="update-date-range" class="btn btn-primary btn-custom">Update Range</button>
+    </div>
+
+    <div class="table-responsive mt-3">
+        <table class="table" id="transaction-details-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Booking Date</th>
+                    <th>Time Slot</th>
+                    <th>Transaction Type</th>
+                    <th>Payment Method</th>
+                    <th>Amount</th>
+                    <th>Created By</th>
+                    <th>Created At</th>
+                    <th>Updated By</th>
+                    <th>Updated At</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Transaction details will be populated here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+
+
+
+
+{% block scripts %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script>
+$(document).ready(function() {
+    loadTransactionDetails();
+
+    $('#transaction-date').change(function() {
+        var selectedDate = $(this).val();
+        $.get('/bookings_for_date', { date: selectedDate }, function(bookings) {
+            var bookingSelect = $('#booking-id');
+            bookingSelect.empty();
+            bookingSelect.append('<option value="">Select a booking</option>');
+            bookings.forEach(function(booking) {
+                bookingSelect.append(`<option value="${booking.id}">${booking.time_slot}</option>`);
+            });
+        });
+    });
+
+
+    $('#update-transaction-form').submit(function(e) {
+        e.preventDefault();
+        var formData = $(this).serialize();
+        
+        $.post('/update_transaction', formData, function(response) {
+            if (response.success) {
+                alert('Transaction updated successfully');
+                loadTransactionDetails();
+                $('#update-transaction-form')[0].reset();
+            } else {
+                $('#update-transaction-error').text('Error: ' + response.message).show();
+            }
+        }).fail(function(xhr) {
+            var errorMessage = 'An error occurred. Please try again.';
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                errorMessage = xhr.responseJSON.message;
+            }
+            $('#update-transaction-error').text('Error: ' + errorMessage).show();
+        });
+    });
+
+    $('#update-date-range').click(function() {
+        loadTransactionDetails();
+    });
+
+    function loadTransactionDetails() {
+        var startDate = $('#start-date').val();
+        var endDate = $('#end-date').val();
+        $.get('/transactions_list', { start_date: startDate, end_date: endDate }, function(response) {
+            if (response.success) {
+                updateTransactionDetailsTable(response.transactions);
+            } else {
+                console.error('Failed to load transaction details:', response.message);
+            }
+        });
+    }
+
+    function updateTransactionDetailsTable(transactions) {
+        var tableBody = $('#transaction-details-table tbody');
+        tableBody.empty();
+        transactions.forEach(function(transaction) {
+            var row = `<tr data-transaction-id="${transaction.id}">
+                <td>${transaction.id}</td>
+                <td class = "slot-cell">${transaction.booking_date}</td>
+                <td class = "slot-cell">${transaction.time_slot}</td>
+                <td>${transaction.transaction_type}</td>
+                <td>${transaction.payment_method}</td>
+                <td>${transaction.amount}</td>
+                <td>${transaction.creator}</td>
+                <td class = "slot-cell">${transaction.created_at}</td>
+            </tr>`;
+            tableBody.append(row);
+        });
+    }
+
+    $(document).on('click', '#transaction-details-table tbody tr', function() {
+        var transactionId = $(this).data('transaction-id');
+            $.get('/transaction_details', { transaction_id: transactionId }, function(response) {
+                if (response.success) {
+                    var transaction = response.transaction;
+                    $('#transaction-id').val(transaction.id);
+                    $('#transaction-date').val(transaction.booking_date);
+                    
+                    // Update the booking select
+                    var bookingSelect = $('#booking-id');
+                    bookingSelect.empty();
+                    bookingSelect.append(`<option value="${transaction.booking_id}" selected>${transaction.time_slot}</option>`);
+                    
+                    // Update transaction type
+                    $('#transaction-type').find(`option:contains("${transaction.transaction_type}")`).prop('selected', true);
+                    
+                    // Update payment method
+                    $('#payment-method').find(`option:contains("${transaction.payment_method}")`).prop('selected', true);
+                    
+                    $('#amount').val(transaction.amount);
+
+                    console.log('Transaction details populated:', transaction);
+                    console.log('Booking ID:', $('#booking-id').val());
+                    console.log('Transaction Type:', $('#transaction-type').val());
+                    console.log('Payment Method:', $('#payment-method').val());
+                } else {
+                    console.error('Failed to load transaction details:', response.message);
+                }
+            }).fail(function(xhr) {
+                console.error('Error loading transaction details:', xhr.responseText);
+            });
+        });
+});
+</script>
+{% endblock %}
+
+
+
+
+

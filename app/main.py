@@ -6,7 +6,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
 from .config import settings
 from .database import get_db, Base, engine
-from .models import User, Booking, Transaction, SlotPrice 
+from .models import User, Booking, Transaction, SlotPrice, TransactionSummary
 from .routes import router as user_router
 from .auth import get_current_user
 
@@ -21,10 +21,10 @@ app.include_router(user_router)
 
 @app.on_event("startup")
 async def startup():
-    await engine.connect()
-
-    #async with engine.begin() as conn:
-        #await conn.run_sync(Base.metadata.create_all)
+    try:
+        await engine.connect()
+    except Exception as e:
+        print(f"Error connecting to database: {e}")
       
 
 @app.on_event("shutdown")

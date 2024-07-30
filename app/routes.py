@@ -1,16 +1,17 @@
 from fastapi import APIRouter, Depends, Request, Form, HTTPException , Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.sql import text
+from sqlalchemy.sql import text , func
 from sqlalchemy.orm import joinedload
+from sqlalchemy import or_, and_
 from fastapi.responses import HTMLResponse , RedirectResponse , JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordRequestForm
 from passlib.context import CryptContext
 from datetime import datetime , timedelta  ,timezone , date
 from dateutil.relativedelta import relativedelta
-from .database import SessionLocal
-from .models import User , Booking , Transaction, SlotPrice, TransactionStatus , DayOfWeek
+from .database import get_db
+from .models import User , Booking , Transaction, SlotPrice, PaymentMethod , TransactionStatus , TransactionType , TransactionSummary, DayOfWeek
 from .auth import create_access_token, get_current_user
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
@@ -22,9 +23,6 @@ templates = Jinja2Templates(directory="app/templates")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-async def get_db():
-    async with SessionLocal() as session:
-        yield session
 
 '''
 --------------------
@@ -514,33 +512,22 @@ TRANSACTION ROUTE
 
 
 
-from fastapi import HTTPException, Depends
-from sqlalchemy.exc import SQLAlchemyError
 
 @router.get("/transactions", response_class=HTMLResponse)
-async def transactions_page(
-    request: Request,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    return templates.TemplateResponse("transactions.html", {
-        "request": request,
-        "current_user": current_user,
-        "today": date.today()
-    })
+async def transactions_page(request: Request, current_user: User = Depends(get_current_user)):
+    return templates.TemplateResponse("transactions.html", {"request": request, "current_user": current_user})
 
+@router.get("/update_transactions", response_class=HTMLResponse)
+async def update_transactions_page(request: Request, current_user: User = Depends(get_current_user)):
+    return templates.TemplateResponse("update_transactions.html", {"request": request, "current_user": current_user})
 
 
 @router.get("/bookings_for_date")
-async def get_bookings_for_date(
-    date: str = Query(...),
-    db: AsyncSession = Depends(get_db)
-):
+async def get_bookings_for_date(date: str, db: AsyncSession = Depends(get_db)):
     try:
         booking_date = datetime.strptime(date, "%Y-%m-%d").date()
         bookings = await db.execute(
             select(Booking)
-            .options(joinedload(Booking.transaction))
             .filter(Booking.booking_date == booking_date)
             .order_by(Booking.time_slot)
         )
@@ -549,121 +536,180 @@ async def get_bookings_for_date(
                 "id": b.id,
                 "name": b.name,
                 "time_slot": b.time_slot,
-                "has_transaction": b.transaction is not None
             } for b in bookings.scalars()
         ]
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 
-
-
 @router.get("/transactions_list")
 async def get_transactions(
-    date: str = Query(...),
+    start_date: str = None,
+    end_date: str = None,
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        transaction_date = datetime.strptime(date, "%Y-%m-%d").date()
-        transactions = await db.execute(
-            select(Transaction)
-            .options(joinedload(Transaction.booking), joinedload(Transaction.creator), joinedload(Transaction.updater))
-            .join(Booking)
-            .filter(Booking.booking_date == transaction_date)
-            .order_by(Transaction.created_at.desc())
-        )
-        return [
+        query = select(Transaction).options(joinedload(Transaction.booking), joinedload(Transaction.creator))
+        
+        if start_date:
+            start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+            query = query.filter(Transaction.created_at >= start_date)
+        
+        if end_date:
+            end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+            query = query.filter(Transaction.created_at <= end_date)
+        
+        query = query.order_by(Transaction.created_at.desc())
+        
+        transactions = await db.execute(query)
+        
+        result = [
             {
                 "id": t.id,
                 "booking_date": t.booking.booking_date.isoformat(),
                 "time_slot": t.booking.time_slot,
-                "total_price": t.total_price,
-                "booking_payment": t.booking_payment,
-                "fee_payment": t.fee_payment,
-                "discount": t.discount,
-                "other_adjustments": t.other_adjustments,
-                "leftover": t.leftover,
-                "status": t.status.value,
-                "cash_payment": t.cash_payment,
-                "mobile_banking_payment": t.mobile_banking_payment,
-                "bank_transfer_payment": t.bank_transfer_payment,
+                "transaction_type": t.transaction_type.value,
+                "payment_method": t.payment_method.value,
+                "amount": t.amount,
                 "creator": t.creator.username,
-                "updater": t.updater.username,
-                "created_at": t.created_at.isoformat(),
-                "updated_at": t.updated_at.isoformat()
+                "created_at": t.created_at.isoformat()
             } for t in transactions.scalars()
         ]
+        return JSONResponse(content={"success": True, "transactions": result})
     except SQLAlchemyError as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logging.error(f"Database error in get_transactions: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Database error: {str(e)}"})
+    except Exception as e:
+        logging.error(f"Unexpected error in get_transactions: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Unexpected error: {str(e)}"})
 
 
 
-@router.post("/add_transaction", response_class=JSONResponse)
+@router.get("/transaction_details")
+async def get_transaction_details(
+    transaction_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        transaction = await db.execute(
+            select(Transaction)
+            .options(joinedload(Transaction.booking), joinedload(Transaction.creator))
+            .filter(Transaction.id == transaction_id)
+        )
+        transaction = transaction.scalar_one_or_none()
+
+        if not transaction:
+            return JSONResponse(status_code=404, content={"success": False, "message": "Transaction not found"})
+
+        return JSONResponse(content={
+            "success": True,
+            "transaction": {
+                "id": transaction.id,
+                "booking_id": transaction.booking.id,
+                "booking_date": transaction.booking.booking_date.isoformat(),
+                "time_slot": transaction.booking.time_slot,
+                "transaction_type": transaction.transaction_type.value,
+                "payment_method": transaction.payment_method.value,
+                "amount": transaction.amount,
+                "created_by": transaction.creator.username,
+                "created_at": transaction.created_at.isoformat(),
+                "updated_by": transaction.updated_by.username if transaction.updated_by else None,
+                "updated_at": transaction.updated_at.isoformat() if transaction.updated_at else None
+            }
+        })
+    except SQLAlchemyError as db_exc:
+        logging.error(f"Database error in get_transaction_details: {str(db_exc)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Database error: {str(db_exc)}"})
+    except Exception as exc:
+        logging.error(f"Unexpected error in get_transaction_details: {str(exc)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Unexpected error: {str(exc)}"})
+
+
+
+
+@router.post("/add_transaction")
 async def add_transaction(
-    request: Request,
     booking_id: int = Form(...),
-    booking_payment: float = Form(...),
-    fee_payment: float = Form(...),
-    discount: float = Form(0),
-    other_adjustments: float = Form(0),
-    cash_payment: float = Form(0),
-    mobile_banking_payment: float = Form(0),
-    bank_transfer_payment: float = Form(0),
+    transaction_type: str = Form(...),
+    payment_method: str = Form(...),
+    amount: float = Form(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        booking_result = await db.execute(select(Booking).options(joinedload(Booking.user)).filter(Booking.id == booking_id))
-        booking = booking_result.scalar_one_or_none()
-
+        booking = await db.get(Booking, booking_id)
         if not booking:
             return JSONResponse(status_code=404, content={"success": False, "message": "Booking not found"})
 
-        logging.info(f"Booking found: {booking.id}, Time slot: {booking.time_slot}, Date: {booking.booking_date}")
-
-        # Get the day of the week for the booking and convert it to the enum
-        booking_day_str = booking.booking_date.strftime("%A").upper()
-        booking_day_enum = DayOfWeek[booking_day_str]
-
+    # Get the slot price for this booking
         slot_price_result = await db.execute(
-            select(SlotPrice).filter(
+            select(SlotPrice)
+            .filter(
                 SlotPrice.time_slot == booking.time_slot,
-                SlotPrice.day_of_week == booking_day_enum
+                SlotPrice.day_of_week == DayOfWeek[booking.booking_date.strftime('%A').upper()],
+                or_(
+                    and_(
+                        SlotPrice.start_date <= booking.booking_date,
+                        SlotPrice.end_date >= booking.booking_date
+                    ),
+                    and_(
+                        SlotPrice.start_date == None,
+                        SlotPrice.end_date == None
+                    )
+                )
             )
+            .order_by(SlotPrice.is_default.desc())
         )
-        slot_price = slot_price_result.scalar_one_or_none()
+        slot_prices = slot_price_result.scalars().all()
 
-        if not slot_price:
-            logging.error(f"Slot price not found for time slot: {booking.time_slot} on {booking_day_str}")
-            return JSONResponse(status_code=404, content={"success": False, "message": f"Slot price not found for {booking_day_str}"})
+        if not slot_prices:
+            return JSONResponse(status_code=404, content={
+                "success": False, 
+                "message": f"Slot price not found for booking (ID: {booking_id}, Date: {booking.booking_date}, Time: {booking.time_slot})"
+            })
 
-        total_price = slot_price.price
-        total_paid = booking_payment + fee_payment
-        leftover = total_price - (total_paid - discount + other_adjustments)
-
-        if leftover < 0:
-            return JSONResponse(status_code=400, content={"success": False, "message": "Overpayment detected"})
-
-        status = TransactionStatus.SUCCESSFUL if leftover == 0 else TransactionStatus.PARTIAL if leftover > 0 else TransactionStatus.PENDING
+        # Use the first (most specific) slot price
+        slot_price = slot_prices[0]
 
         transaction = Transaction(
             booking_id=booking_id,
-            total_price=total_price,
-            booking_payment=booking_payment,
-            fee_payment=fee_payment,
-            discount=discount,
-            other_adjustments=other_adjustments,
-            leftover=leftover,
-            status=status,
-            cash_payment=cash_payment,
-            mobile_banking_payment=mobile_banking_payment,
-            bank_transfer_payment=bank_transfer_payment,
+            transaction_type=TransactionType[transaction_type],
+            payment_method=PaymentMethod[payment_method],
+            amount=amount,
             created_by=current_user.id,
-            updated_by=current_user.id
-        )
+            created_at=datetime.now(timezone.utc)
+            )
         db.add(transaction)
-        await db.commit()
+        await db.flush()
+
+        summary = await db.get(TransactionSummary, booking_id)
+        if not summary:
+            summary = TransactionSummary(booking_id=booking_id, total_price=slot_price.price)
+            db.add(summary)
+
+        transactions = await db.execute(
+            select(Transaction).filter(Transaction.booking_id == booking_id)
+        )
+        transactions = transactions.scalars().all()
+
+        summary.total_paid = sum(t.amount for t in transactions if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT])
+        summary.leftover = summary.total_price - summary.total_paid
+        summary.booking_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.BOOKING_PAYMENT)
+        summary.slot_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.SLOT_PAYMENT)
+        summary.cash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CASH)
+        summary.bkash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.BKASH)
         
+        if not summary.booking_payment_date and transaction.transaction_type == TransactionType.BOOKING_PAYMENT:
+            summary.booking_payment_date = transaction.created_at.date()
+
+        if summary.leftover == 0:
+            summary.status = TransactionStatus.SUCCESSFUL
+        elif summary.total_paid > 0:
+            summary.status = TransactionStatus.PARTIAL
+        else:
+            summary.status = TransactionStatus.PENDING
+
+        await db.commit()
         return JSONResponse(content={"success": True, "message": "Transaction added successfully"})
     
     except SQLAlchemyError as db_exc:
@@ -675,62 +721,102 @@ async def add_transaction(
         return JSONResponse(status_code=500, content={"success": False, "message": f"Unexpected error: {str(exc)}"})
 
 
-@router.post("/update_transaction", response_class=JSONResponse)
+
+
+@router.get("/transaction_summaries")
+async def get_transaction_summaries(db: AsyncSession = Depends(get_db)):
+    try:
+        summaries = await db.execute(
+            select(TransactionSummary)
+            .options(joinedload(TransactionSummary.booking))
+            .order_by(TransactionSummary.updated_at.desc())
+            .limit(10)
+        )
+        
+        result = []
+        for summary in summaries.scalars():
+            booking = summary.booking
+            result.append({
+                "booking_date": booking.booking_date.isoformat(),
+                "slot": booking.time_slot,
+                "status": summary.status.value,
+                "total_paid": summary.total_paid,
+                "leftover": summary.leftover,
+                "booking_payment": summary.booking_payment,
+                "slot_payment": summary.slot_payment,
+                "cash_payment": summary.cash_payment,
+                "bkash_payment": summary.bkash_payment,
+                "last_payment_date": summary.updated_at.date().isoformat(),
+                "booking_payment_date": summary.booking_payment_date.isoformat() if summary.booking_payment_date else None,
+            })
+        
+        return JSONResponse(content={"success": True, "summaries": result})
+    except SQLAlchemyError as e:
+        logging.error(f"Database error in get_transaction_summaries: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Database error: {str(e)}"})
+    except Exception as e:
+        logging.error(f"Unexpected error in get_transaction_summaries: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Unexpected error: {str(e)}"})
+
+
+
+
+
+@router.post("/update_transaction")
 async def update_transaction(
-    request: Request,
     transaction_id: int = Form(...),
-    fee_payment: float = Form(...),
-    discount: float = Form(0),
-    other_adjustments: float = Form(0),
-    cash_payment: float = Form(0),
-    mobile_banking_payment: float = Form(0),
-    bank_transfer_payment: float = Form(0),
+    transaction_type: str = Form(...),
+    payment_method: str = Form(...),
+    amount: float = Form(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        transaction_result = await db.execute(
-            select(Transaction)
-            .options(joinedload(Transaction.booking))
-            .filter(Transaction.id == transaction_id)
-        )
-        transaction = transaction_result.scalar_one_or_none()
-
+        transaction = await db.get(Transaction, transaction_id)
         if not transaction:
-            raise HTTPException(status_code=404, detail="Transaction not found")
+            return JSONResponse(status_code=404, content={"success": False, "message": "Transaction not found"})
 
-        slot_price_result = await db.execute(select(SlotPrice).filter(SlotPrice.time_slot == transaction.booking.time_slot))
-        slot_price = slot_price_result.scalar_one_or_none()
-
-        if not slot_price:
-            raise HTTPException(status_code=404, detail="Slot price not found")
-
-        transaction.total_price = slot_price.price
-        transaction.fee_payment += fee_payment
-        transaction.discount = discount
-        transaction.other_adjustments = other_adjustments
-        transaction.cash_payment += cash_payment
-        transaction.mobile_banking_payment += mobile_banking_payment
-        transaction.bank_transfer_payment += bank_transfer_payment
-
-        total_paid = transaction.booking_payment + transaction.fee_payment
-        transaction.leftover = transaction.total_price - (total_paid - transaction.discount + transaction.other_adjustments)
-
-        if transaction.leftover < 0:
-            raise HTTPException(status_code=400, detail="Overpayment detected")
-
-        transaction.status = TransactionStatus.SUCCESSFUL if transaction.leftover == 0 else TransactionStatus.PARTIAL if transaction.leftover > 0 else TransactionStatus.PENDING
+        transaction.transaction_type = TransactionType[transaction_type]
+        transaction.payment_method = PaymentMethod[payment_method]
+        transaction.amount = amount
         transaction.updated_by = current_user.id
+        transaction.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        await db.flush()
+
+        # Recalculate summary
+        summary = await db.get(TransactionSummary, transaction.booking_id)
+        if not summary:
+            return JSONResponse(status_code=404, content={"success": False, "message": "Transaction summary not found"})
+
+        transactions = await db.execute(
+            select(Transaction).filter(Transaction.booking_id == transaction.booking_id)
+        )
+        transactions = transactions.scalars().all()
+
+        summary.total_paid = sum(t.amount for t in transactions if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT])
+        summary.leftover = summary.total_price - summary.total_paid
+        summary.booking_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.BOOKING_PAYMENT)
+        summary.slot_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.SLOT_PAYMENT)
+        summary.cash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CASH)
+        summary.bkash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.BKASH)
+        summary.nagad_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.NAGAD)
+        summary.card_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CARD)
+        summary.bank_transfer_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.BANK_TRANSFER)
+        
+        if summary.leftover == 0:
+            summary.status = TransactionStatus.SUCCESSFUL
+        elif summary.total_paid > 0:
+            summary.status = TransactionStatus.PARTIAL
+        else:
+            summary.status = TransactionStatus.PENDING
 
         await db.commit()
-    except SQLAlchemyError as e:
+        return JSONResponse(content={"success": True, "message": "Transaction updated successfully"})
+    
+    except SQLAlchemyError as db_exc:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-
-    return JSONResponse(content={"success": True, "message": "Transaction updated successfully"})
-
-
-
-
-
-
+        logging.error(f"Database error in update_transaction: {str(db_exc)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Database error: {str(db_exc)}"})
+    except Exception as exc:
+        logging.error(f"Unexpected error in update_transaction: {str(exc)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Unexpected error: {str(exc)}"})

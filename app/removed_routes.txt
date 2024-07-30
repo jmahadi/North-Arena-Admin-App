@@ -32,3 +32,33 @@ async def insert_user(request: Request, username: str = Form(...), email: str = 
 @router.get("/insert_user", response_class=HTMLResponse)
 async def insert_user_get(request: Request):
     return templates.TemplateResponse("insert_user.html", {"request": request})
+
+
+
+    <div class="col-md-6">
+            <h2>Transaction List</h2>
+            <div class="form-group">
+                <label for="transaction-list-date">Select Date:</label>
+                <input type="date" id="transaction-list-date" class="form-control">
+            </div>
+            <div class="table-responsive">
+                <table id="transaction-table" class="table">
+                    <thead>
+                        <tr>
+                            <th>Time Slot</th>
+                            <th>Type</th>
+                            <th>Method</th>
+                            <th>Amount</th>
+                            <th>Created By</th>
+                            <th>Created At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Transaction rows will be inserted here dynamically -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="transaction-list-error" class="alert alert-danger mt-3" style="display: none;"></div>
+        </div>
+    </div>
+</div>

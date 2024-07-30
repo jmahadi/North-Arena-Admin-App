@@ -27,6 +27,12 @@
     .table {
         color: #e0e0e0;
     }
+    .badge {
+        font-size: 100%;
+        font-weight: normal;
+        padding: 5px 10px;
+        border-radius: 4px;
+    }
     .table-dark {
         background-color: #2a2a2a;
     }
@@ -51,241 +57,194 @@
     .transaction-form {
         margin-bottom: 30px;
     }
+
+    .table-dark tr[style*="background-color"] {
+        color: #000;
+    }
+    .table-dark tr[style*="background-color"] td {
+        background-color: inherit !important;
+    }
+    .slot-cell {
+        white-space: nowrap;  
+    }
+
+    .table-success {
+        background-color: #4CAF50 !important;
+    }
+    .table-warning {
+        background-color: #dd6a27 !important;
+    }
+    .table-danger {
+        background-color: #f8d7da !important;
+    }
 </style>
+
 
 <div class="container mt-5">
     <h1>Transactions</h1>
-
-    <a href="/dashboard" class="btn btn-secondary mb-3">Back to Dashboard</a>
     
+    <a href="/dashboard" class="btn btn-secondary mb-3">Back to Dashboard</a>
+    <a href="/update_transactions" class="btn btn-primary mb-3">Update Transactions</a>
+
     <div class="row">
-        <div class="col-md-6">
+        <div class="col-md-12">
             <h2>Add Transaction</h2>
             <form id="add-transaction-form">
-                <input type="hidden" id="booking-id" name="booking_id">
                 <div class="form-group">
                     <label for="transaction-date">Select Date:</label>
-                    <input type="date" id="transaction-date" class="form-control" required>
+                    <input type="date" id="transaction-date" name="transaction_date" class="form-control" required>
                 </div>
                 <div class="form-group">
-                    <label for="booking-select">Select Booking:</label>
-                    <select id="booking-select" class="form-control" required></select>
+                    <label for="booking-id">Select Booking:</label>
+                    <select id="booking-id" name="booking_id" class="form-control" required>
+                        <option value="">Select a booking</option>
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label for="booking-payment">Booking Payment:</label>
-                    <input type="number" id="booking-payment" name="booking_payment" class="form-control" required>
+                    <label for="transaction-type">Transaction Type:</label>
+                    <select id="transaction-type" name="transaction_type" class="form-control" required>
+                        <option value="BOOKING_PAYMENT">Booking Payment</option>
+                        <option value="SLOT_PAYMENT">Slot Payment</option>
+                        <option value="DISCOUNT">Discount</option>
+                        <option value="OTHER_ADJUSTMENT">Other Adjustment</option>
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label for="fee-payment">Fee Payment:</label>
-                    <input type="number" id="fee-payment" name="fee_payment" class="form-control" required>
+                    <label for="payment-method">Payment Method:</label>
+                    <select id="payment-method" name="payment_method" class="form-control" required>
+                        <option value="CASH">Cash</option>
+                        <option value="BKASH">bKash</option>
+                        <option value="NAGAD">Nagad</option>
+                        <option value="CARD">Card</option>
+                        <option value="BANK_TRANSFER">Bank Transfer</option>
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label for="discount">Discount:</label>
-                    <input type="number" id="discount" name="discount" class="form-control" value="0">
-                </div>
-                <div class="form-group">
-                    <label for="other-adjustments">Other Adjustments:</label>
-                    <input type="number" id="other-adjustments" name="other_adjustments" class="form-control" value="0">
-                </div>
-                <div class="form-group">
-                    <label for="cash-payment">Cash Payment:</label>
-                    <input type="number" id="cash-payment" name="cash_payment" class="form-control" value="0">
-                </div>
-                <div class="form-group">
-                    <label for="mobile-banking-payment">Mobile Banking Payment:</label>
-                    <input type="number" id="mobile-banking-payment" name="mobile_banking_payment" class="form-control" value="0">
-                </div>
-                <div class="form-group">
-                    <label for="bank-transfer-payment">Bank Transfer Payment:</label>
-                    <input type="number" id="bank-transfer-payment" name="bank_transfer_payment" class="form-control" value="0">
+                    <label for="amount">Amount:</label>
+                    <input type="number" id="amount" name="amount" class="form-control" step="0.01" required>
                 </div>
                 <button type="submit" class="btn btn-primary">Add Transaction</button>
             </form>
             <div id="add-transaction-error" class="alert alert-danger mt-3" style="display: none;"></div>
         </div>
-        <div class="col-md-6">
-            <h2>Transaction List</h2>
-            <div class="form-group">
-                <label for="transaction-list-date">Select Date:</label>
-                <input type="date" id="transaction-list-date" class="form-control">
-            </div>
+    </div>
+
+    <div class="row mt-5">
+        <div class="col-md-12">
+            <h2>Transaction Summaries</h2>
             <div class="table-responsive">
-                <table id="transaction-table" class="table">
+                <table class="table" id="transaction-summaries-table">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Time Slot</th>
-                            <th>Total Price</th>
-                            <th>Booking Payment</th>
-                            <th>Fee Payment</th>
-                            <th>Discount</th>
-                            <th>Other Adjustments</th>
-                            <th>Leftover</th>
+                            <th>Booking Date</th>
+                            <th>Slot</th>
                             <th>Status</th>
-                            <th>Cash</th>
-                            <th>Mobile Banking</th>
-                            <th>Bank Transfer</th>
-                            <th>Created By</th>
-                            <th>Updated By</th>
-                            <th>Created At</th>
-                            <th>Updated At</th>
+                            <th>Total Paid</th>
+                            <th>Left Over</th>
+                            <th>Booking Payment</th>
+                            <th>Slot Payment</th>
+                            <th>Cash Payment</th>
+                            <th>bKash Payment</th>
+                            <th>Last Payment Date</th>
+                            <th>Booking Payment Date</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- Transaction rows will be inserted here dynamically -->
+                        <!-- Transaction rows will be dynamically inserted here -->
                     </tbody>
                 </table>
             </div>
-            <div id="transaction-list-error" class="alert alert-danger mt-3" style="display: none;"></div>
         </div>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script>
-const dateInput = document.getElementById('transaction-date');
-const bookingSelect = document.getElementById('booking-select');
-const addTransactionForm = document.getElementById('add-transaction-form');
-const transactionListDate = document.getElementById('transaction-list-date');
-const transactionTable = document.getElementById('transaction-table').getElementsByTagName('tbody')[0];
-const addTransactionError = document.getElementById('add-transaction-error');
-const transactionListError = document.getElementById('transaction-list-error');
-let slotPrices = {};
+$(document).ready(function() {
+    // Load initial transaction summaries
+    loadTransactionSummaries();
 
-// Fetch slot prices on page load
-fetch('/slot_prices')
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        return response.json();
-    })
-    .then(prices => {
-        slotPrices = prices;
-    })
-    .catch(error => {
-        console.error('Error fetching slot prices:', error);
+    // Populate bookings dropdown when date is selected
+    $('#transaction-date').change(function() {
+        var selectedDate = $(this).val();
+        $.get('/bookings_for_date', { date: selectedDate }, function(bookings) {
+            var bookingSelect = $('#booking-id');
+            bookingSelect.empty();
+            bookingSelect.append('<option value="">Select a booking</option>');
+            bookings.forEach(function(booking) {
+                bookingSelect.append(`<option value="${booking.id}">${booking.name} - ${booking.time_slot}</option>`);
+            });
+        });
     });
 
-dateInput.addEventListener('change', function() {
-    fetchBookingsForDate(this.value);
-});
+    // Add Transaction form submission
+    $('#add-transaction-form').submit(function(e) {
+        e.preventDefault();
+        var formData = $(this).serialize();
+        
+        $.post('/add_transaction', formData, function(response) {
+            if (response.success) {
+                alert('Transaction added successfully');
+                loadTransactionSummaries();
+                $('#add-transaction-form')[0].reset();
+            } else {
+                $('#add-transaction-error').text('Error: ' + response.message).show();
+            }
+        }).fail(function(xhr) {
+            var errorMessage = 'An error occurred. Please try again.';
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                errorMessage = xhr.responseJSON.message;
+            }
+            $('#add-transaction-error').text('Error: ' + errorMessage).show();
+        });
+    });
 
-bookingSelect.addEventListener('change', function() {
-    const selectedOption = this.options[this.selectedIndex];
-    const bookingId = selectedOption.value;
-    const timeSlot = selectedOption.textContent.split(' - ')[0];
-    
-    document.getElementById('booking-id').value = bookingId;
-    
-    // Set the booking payment to the slot price if available
-    if (slotPrices[timeSlot]) {
-        document.getElementById('booking-payment').value = slotPrices[timeSlot];
+    function loadTransactionSummaries() {
+        $.get('/transaction_summaries', function(response) {
+            if (response.success) {
+                updateTransactionSummariesTable(response.summaries);
+            } else {
+                console.error('Failed to load transaction summaries:', response.message);
+            }
+        });
+    }
+
+    function updateTransactionSummariesTable(summaries) {
+        var tableBody = $('#transaction-summaries-table tbody');
+        tableBody.empty();
+        summaries.forEach(function(summary) {
+            var statusClass = getStatusClass(summary.status);
+            var row = `<tr>
+                <td class="slot-cell">${summary.booking_date}</td>
+                <td class="slot-cell">${summary.slot}</td>
+                <td><span class="badge ${statusClass}">${summary.status}</span></td>
+                <td>${summary.total_paid}</td>
+                <td>${summary.leftover}</td>
+                <td>${summary.booking_payment}</td>
+                <td>${summary.slot_payment}</td>
+                <td>${summary.cash_payment}</td>
+                <td>${summary.bkash_payment}</td>
+                <td class="slot-cell">${summary.last_payment_date}</td>
+                <td class="slot-cell">${summary.booking_payment_date || ''}</td>
+            </tr>`;
+            tableBody.append(row);
+        });
+    }
+
+    function getStatusClass(status) {
+        switch(status.toLowerCase()) {
+            case 'successful':
+                return 'bg-success text-white';
+            case 'partial':
+                return 'bg-warning text-white';
+            case 'pending':
+                return 'bg-danger text-white';
+            default:
+                return 'bg-secondary text-white';
+        }
     }
 });
-
-function fetchBookingsForDate(date) {
-    fetch(`/bookings_for_date?date=${date}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(bookings => {
-            bookingSelect.innerHTML = '<option value="">Select a booking</option>';
-            bookings.forEach(booking => {
-                const option = document.createElement('option');
-                option.value = booking.id;
-                option.textContent = `${booking.time_slot} - ${booking.name}`;
-                option.style.color = booking.has_transaction ? 'green' : 'black';
-                bookingSelect.appendChild(option);
-            });
-        })
-        .catch(error => {
-            console.error('Error fetching bookings:', error);
-            addTransactionError.textContent = 'Error fetching bookings. Please try again.';
-            addTransactionError.style.display = 'block';
-        });
-}
-
-addTransactionForm.addEventListener('submit', function(e) {
-    e.preventDefault();
-    const formData = new FormData(this);
-    fetch('/add_transaction', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('Transaction added successfully');
-            fetchBookingsForDate(dateInput.value);
-            fetchTransactionsForDate(dateInput.value);
-            addTransactionForm.reset();
-            addTransactionError.style.display = 'none';
-        } else {
-            throw new Error(data.message || 'Unknown error occurred');
-        }
-    })
-    .catch(error => {
-        console.error('Error adding transaction:', error);
-        addTransactionError.textContent = 'Error adding transaction: ' + error.message;
-        addTransactionError.style.display = 'block';
-    });
-});
-
-transactionListDate.addEventListener('change', function() {
-    fetchTransactionsForDate(this.value);
-});
-
-
-function fetchTransactionsForDate(date) {
-    fetch(`/transactions_list?date=${date}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(transactions => {
-            transactionTable.innerHTML = '';
-            transactions.forEach(t => {
-                const row = transactionTable.insertRow();
-                row.innerHTML = `
-                    <td>${t.id}</td>
-                    <td>${t.booking.time_slot}</td>
-                    <td>${t.total_price}</td>
-                    <td>${t.booking_payment}</td>
-                    <td>${t.fee_payment}</td>
-                    <td>${t.discount}</td>
-                    <td>${t.other_adjustments}</td>
-                    <td>${t.leftover}</td>
-                    <td>${t.status}</td>
-                    <td>${t.cash_payment}</td>
-                    <td>${t.mobile_banking_payment}</td>
-                    <td>${t.bank_transfer_payment}</td>
-                    <td>${t.creator}</td>
-                    <td>${t.updater}</td>
-                    <td>${new Date(t.created_at).toLocaleString()}</td>
-                    <td>${new Date(t.updated_at).toLocaleString()}</td>
-                `;
-            });
-            transactionListError.style.display = 'none';
-        })
-        .catch(error => {
-            console.error('Error fetching transactions:', error);
-            transactionListError.textContent = 'Error fetching transactions. Please try again.';
-            transactionListError.style.display = 'block';
-        });
-}
-
-// Initialize with today's date
-const today = new Date().toISOString().split('T')[0];
-dateInput.value = today;
-transactionListDate.value = today;
-fetchBookingsForDate(today);
-fetchTransactionsForDate(today);
 </script>
 {% endblock %}
